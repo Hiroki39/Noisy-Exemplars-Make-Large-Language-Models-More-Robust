@@ -3,7 +3,9 @@ import openai
 from datasets import load_dataset
 from utils import evaluate_openai
 from uuid import uuid4
+import os
 import csv
+
 
 def conduct_test(model, dataset_name, prompt, perturb, perturb_exemplar):
 
@@ -13,15 +15,17 @@ def conduct_test(model, dataset_name, prompt, perturb, perturb_exemplar):
 
     if model == 'gpt3' or model == 'gptturbo':
         # Set up the OpenAI API client
-        openai.api_key = "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"
-        evaluate_openai(run_id, model, dataset, prompt, perturb, perturb_exemplar)
+        openai.api_key = os.getenv('OPENAI_API_KEY')
+        evaluate_openai(run_id, model, dataset, prompt,
+                        perturb, perturb_exemplar)
 
     else:
         pass
 
-    with open(f'log_files.csv', 'a') as f:
+    with open('log_files.csv', 'a') as f:
         writer = csv.writer(f)
-        writer.writerow([run_id, model, dataset_name, prompt, perturb, perturb_exemplar])
+        writer.writerow([run_id, model, dataset_name,
+                        prompt, perturb, perturb_exemplar])
 
 
 if __name__ == '__main__':
@@ -30,7 +34,9 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', type=str, required=True, default='gsm8k')
     parser.add_argument('--prompt', type=str, required=True, default='cot')
     parser.add_argument('--perturb', type=str, required=False)
-    parser.add_argument('--perturb_exemplar', action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument('--perturb_exemplar',
+                        action=argparse.BooleanOptionalAction, default=False)
     args = parser.parse_args()
 
-    conduct_test(args.model, args.dataset, args.prompt, args.perturb, args.perturb_exemplar)
+    conduct_test(args.model, args.dataset, args.prompt,
+                 args.perturb, args.perturb_exemplar)
