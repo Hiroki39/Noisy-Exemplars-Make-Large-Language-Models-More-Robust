@@ -3,6 +3,7 @@ import openai
 from datasets import load_dataset
 from utils import evaluate_openai
 from uuid import uuid4
+from dotenv import load_dotenv
 import os
 import csv
 
@@ -37,6 +38,8 @@ if __name__ == '__main__':
     parser.add_argument('--perturb_exemplar',
                         action=argparse.BooleanOptionalAction, default=False)
     args = parser.parse_args()
+
+    load_dotenv()
 
     conduct_test(args.model, args.dataset, args.prompt,
                  args.perturb, args.perturb_exemplar)
