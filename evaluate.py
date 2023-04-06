@@ -14,14 +14,9 @@ def conduct_test(model, dataset_name, prompt, perturb, perturb_exemplar):
     # Load the GSM8K dataset from Hugging Face
     dataset = load_dataset(dataset_name, "main")
 
-    if model == 'gpt3' or model == 'gptturbo':
-        # Set up the OpenAI API client
-        openai.api_key = os.getenv('OPENAI_API_KEY')
-        evaluate_openai(run_id, model, dataset, prompt,
-                        perturb, perturb_exemplar)
-
-    else:
-        pass
+    # Set up the OpenAI API client
+    openai.api_key = os.getenv('OPENAI_API_KEY')
+    evaluate_openai(run_id, model, dataset, prompt, perturb, perturb_exemplar)
 
     with open('log_files.csv', 'a') as f:
         writer = csv.writer(f)
