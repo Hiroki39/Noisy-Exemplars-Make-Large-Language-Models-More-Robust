@@ -143,6 +143,7 @@ def fetch_model_and_tokenizer(model_name):
 
 
 def evaluate_openai(run_id, model_name, dataset, prompt, perturb, perturb_exemplar):
+
     with open(f'logs/{run_id}.jsonl', 'w') as f:
 
         exemp_dict = dataset["train"][0]
@@ -153,7 +154,8 @@ def evaluate_openai(run_id, model_name, dataset, prompt, perturb, perturb_exempl
 
         # merge train and test datasets and remove sample for exemplar
         modified_ds = concatenate_datasets([dataset["train"].select(
-            range(1, 5)), dataset["test"]])
+            range(1, len(dataset["train"]))), dataset["test"]])
+        # modified_ds = dataset["train"].select(range(1, 1690))
 
         model_file, model_tokenizer = fetch_model_and_tokenizer(model_name)
 
@@ -168,6 +170,7 @@ def evaluate_openai(run_id, model_name, dataset, prompt, perturb, perturb_exempl
                 prompt_text, model_name, model_file, model_tokenizer)
 
             record = build_record(sample, result, perturb)
+
             f.write(json.dumps(record) + '\n')
 
 # Function to interact with the model and generate a response
