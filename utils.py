@@ -15,7 +15,7 @@ random.seed(42)
 
 
 def generate_exemplar(exemp_dict, prompt, perturb):
-    if prompt == 'cot':
+    if prompt != '0cot':
         # Generate a response to a prompt
         exemp_question = perturb_question(exemp_dict, perturb)
         exemp_answer = exemp_dict['answer']
@@ -28,12 +28,8 @@ def generate_exemplar(exemp_dict, prompt, perturb):
 
         exemplar = "Q: " + exemp_question + "\nA: " + exemp_answer
 
-    elif prompt == '0cot':
-
-        exemplar = ""
-
     else:
-        pass
+        exemplar = ""
 
     return exemplar
 
@@ -42,16 +38,13 @@ def generate_prompt(question, exemplar, prompt):
 
     instr = "End your response with 'The answer is <answer>.'"
 
-    if prompt == 'cot':
+    if prompt != '0cot':
         prompt_text = instr + "\n\n" + exemplar + \
             "\n\nQ: " + question + "\nA:"
 
-    elif prompt == '0cot':
+    else:
         prompt_text = instr + "\n\nQ: " + \
             question + "\nA: Let's think step by step: "
-
-    else:
-        pass
 
     return prompt_text
 
@@ -72,6 +65,7 @@ def perturb_question(sample, perturb):
         # insert first step before the last sentence of the question
         sents = sent_tokenize(sample['question'])
         sents.insert(len(sents) - 1, first_step)
+
         return " ".join(sents)
     elif perturb == "typo":
 
@@ -155,7 +149,7 @@ def evaluate_openai(run_id, model_name, dataset, prompt, perturb, perturb_exempl
         # merge train and test datasets and remove sample for exemplar
         modified_ds = concatenate_datasets([dataset["train"].select(
             range(1, len(dataset["train"]))), dataset["test"]])
-        # modified_ds = dataset["train"].select(range(1, 1690))
+        # modified_ds = dataset["train"].select(range(1, 5))
 
         model_file, model_tokenizer = fetch_model_and_tokenizer(model_name)
 
@@ -173,9 +167,8 @@ def evaluate_openai(run_id, model_name, dataset, prompt, perturb, perturb_exempl
 
             f.write(json.dumps(record) + '\n')
 
+
 # Function to interact with the model and generate a response
-
-
 def generate_response(prompt, model_name, model_file, model_tokenizer):
     if model_name == 'gpt3':
         while True:

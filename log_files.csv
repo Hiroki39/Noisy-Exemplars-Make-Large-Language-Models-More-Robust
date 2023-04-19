@@ -4,3 +4,12 @@ a454c5fe-03ad-4d62-a695-693df2df3620,gptturbo,gsm8k,cot,shortcut,False
 c5ceafad-57e4-4127-8adc-6ab9fe83b17b,gptturbo,gsm8k,cot,shortcut,True
 3beb3ec5-03ec-4c60-9ef9-7c7cc091fdff,gptturbo,gsm8k,0cot,shortcut,True
 bb4408e6-063b-44c1-8640-047805d3bd1a,gptturbo,gsm8k,0cot,,True
+3ac99246-c550-425a-ba54-6b4bbc4e6b96,gptturbo,gsm8k,cot,typo,True
+d0b71edb-7f83-4caf-9dcf-7e5f39067b2d,gptturbo,gsm8k,cot,typo,False
+cf57e172-cf8f-4ba1-aa55-c03711be6809,gptturbo,gsm8k,0cot,typo,False
+52a8c16e-845a-42c3-8b6c-589fd1dfae4c,gptturbo,gsm8k,0cot,typo,True
+e6f02ec1-7852-442c-96dc-71a0a72b9204,gptturbo,gsm8k,ltm,shortcut,False
+924cad4d-2427-4c59-8f7e-dcc0015c8c3a,gptturbo,gsm8k,ltm,shortcut,True
+fa81850b-bc71-49a3-af50-3c29886070ab,gptturbo,gsm8k,ltm,typo,True
+3b4d808f-c293-4281-8e6b-c6dbaae1df5e,gptturbo,gsm8k,ltm,typo,False
+afd1b944-ed95-4631-b45e-5c34633a13b5,gptturbo,gsm8k,ltm,,True

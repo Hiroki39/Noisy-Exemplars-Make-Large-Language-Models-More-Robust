@@ -11,9 +11,13 @@ import csv
 def conduct_test(model, dataset_name, prompt, perturb, perturb_exemplar):
 
     run_id = str(uuid4())
-    # Load the GSM8K dataset from Hugging Face
-    dataset = load_dataset(dataset_name, "main")
 
+    print(f"Run ID: {run_id}")
+
+    # Load the GSM8K dataset from Hugging Face
+    if dataset_name == 'gsm8k':
+        dataset = load_dataset(
+            dataset_name, 'main' if prompt != 'ltm' else 'socratic', download_mode='force_redownload')
     # Set up the OpenAI API client
     openai.api_key = os.getenv('OPENAI_API_KEY')
     evaluate_openai(run_id, model, dataset, prompt, perturb, perturb_exemplar)
@@ -26,13 +30,15 @@ def conduct_test(model, dataset_name, prompt, perturb, perturb_exemplar):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model', type=str, required=True, default='gpt3')
+    parser.add_argument('--model', type=str, required=True, default='gptturbo')
     parser.add_argument('--dataset', type=str, required=True, default='gsm8k')
     parser.add_argument('--prompt', type=str, required=True, default='cot')
     parser.add_argument('--perturb', type=str, required=False)
     parser.add_argument('--perturb_exemplar',
                         action=argparse.BooleanOptionalAction, default=False)
     args = parser.parse_args()
+
+    print("Current Arguments: ", args)
 
     load_dotenv()
 
