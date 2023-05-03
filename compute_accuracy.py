@@ -2,9 +2,10 @@ import pandas as pd
 import json
 
 df = pd.read_csv('log_files.csv', names=[
-                 'run_id', 'model', 'dataset', 'prompt', 'perturb', 'perturb_exemplar'])
+                 'run_id', 'model', 'dataset', 'prompt', 'shots', 'perturb', 'perturb_exemplar'])
 
-for index, row in df.iterrows():
+
+def get_accuracy(row):
 
     cnt = 0
     correct = 0
@@ -20,5 +21,9 @@ for index, row in df.iterrows():
 
             cnt += 1
 
-        print(row)
-        print(f'Accuracy: {correct/cnt}')
+    return correct / cnt
+
+
+df["accuracy"] = df.apply(get_accuracy, axis=1)
+
+df.to_csv('log_files_with_accuracy.csv', index=False)

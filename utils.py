@@ -1,12 +1,14 @@
+from turtle import pos
 import openai
 import re
 import json
+import nltk
 from tqdm import tqdm
 from datasets import concatenate_datasets
 from nltk.tokenize import sent_tokenize, word_tokenize
 from nltk.tokenize.treebank import TreebankWordDetokenizer
+from nltk.corpus import wordnet
 from transformers import T5ForConditionalGeneration, AutoTokenizer
-import torch
 import time
 import random
 from openai.error import APIError, APIConnectionError, RateLimitError, Timeout
@@ -14,19 +16,23 @@ from openai.error import APIError, APIConnectionError, RateLimitError, Timeout
 random.seed(42)
 
 
-def generate_exemplar(exemp_dict, prompt, perturb):
+def generate_exemplar(exemp_ds, prompt, perturb):
     if prompt != '0cot':
-        # Generate a response to a prompt
-        exemp_question = perturb_question(exemp_dict, perturb)
-        exemp_answer = exemp_dict['answer']
 
-        # remove <<...>> pattern from answer with regex non greedy
-        exemp_answer = re.sub(r'<<.*?>>', '', exemp_answer)
-        exemp_answer = re.sub(
-            r"#### (\-?[0-9\.\,]+)", r"The answer is \1.", exemp_answer)
-        exemp_answer = " ".join(exemp_answer.split("\n"))
+        exemplar = ""
 
-        exemplar = "Q: " + exemp_question + "\nA: " + exemp_answer
+        for i in range(len(exemp_ds)):
+            # Generate a response to a prompt
+            exemp_question = perturb_question(exemp_ds[i], perturb)
+            exemp_answer = exemp_ds[i]['answer']
+
+            # remove <<...>> pattern from answer with regex non greedy
+            exemp_answer = re.sub(r'<<.*?>>', '', exemp_answer)
+            exemp_answer = re.sub(
+                r"#### (\-?[0-9\.\,]+)", r"The answer is \1.", exemp_answer)
+            exemp_answer = " ".join(exemp_answer.split("\n"))
+
+            exemplar += "Q: " + exemp_question + "\nA: " + exemp_answer + "\n\n"
 
     else:
         exemplar = ""
@@ -38,13 +44,11 @@ def generate_prompt(question, exemplar, prompt):
 
     instr = "End your response with 'The answer is <answer>.'"
 
-    if prompt != '0cot':
-        prompt_text = instr + "\n\n" + exemplar + \
-            "\n\nQ: " + question + "\nA:"
+    prompt_text = instr + "\n\n" + exemplar + \
+        "Q: " + question + "\nA:"
 
-    else:
-        prompt_text = instr + "\n\nQ: " + \
-            question + "\nA: Let's think step by step: "
+    if prompt == '0cot':
+        prompt_text += " Let's think step by step:"
 
     return prompt_text
 
@@ -52,6 +56,7 @@ def generate_prompt(question, exemplar, prompt):
 def perturb_question(sample, perturb):
     if perturb is None:
         return sample["question"]
+
     elif perturb == "shortcut":
         sample_answer = sample["answer"]
 
@@ -67,6 +72,7 @@ def perturb_question(sample, perturb):
         sents.insert(len(sents) - 1, first_step)
 
         return " ".join(sents)
+
     elif perturb == "typo":
 
         tokens = word_tokenize(sample['question'])
@@ -78,6 +84,54 @@ def perturb_question(sample, perturb):
                     tokens[i] = token[:typo_ind] + \
                         token[typo_ind + 1] + token[typo_ind] + \
                         token[typo_ind + 2:]
+
+        detokenizer = TreebankWordDetokenizer()
+        return detokenizer.detokenize(tokens)
+
+    elif perturb == "repetition":
+
+        sents = sent_tokenize(sample['question'])
+
+        if len(sents) > 1:
+            # randomly select a sentence to repeat
+            rep_sent = random.choice(sents[:-1])
+            # insert repeated sentence to the sentence before the last sentence
+            sents.insert(len(sents) - 1, rep_sent)
+
+        return " ".join(sents)
+
+    elif perturb == "synonym":
+
+        tokens = word_tokenize(sample['question'])
+        pos_tags = nltk.pos_tag(tokens)
+
+        # replace nouns and verbs with synonyms
+        for i, (token, pos_tag) in enumerate(pos_tags):
+            if pos_tag.startswith('N') or pos_tag.startswith('V'):
+
+                if pos_tag.startswith('N'):
+                    synsets = wordnet.synsets(token, pos=wordnet.NOUN)
+                else:
+                    synsets = wordnet.synsets(token, pos=wordnet.VERB)
+
+                if len(synsets) > 0:
+                    # get set of synonyms
+                    syn_tokens = set()
+                    for syn in synsets:
+                        for lemma in syn.lemmas():
+                            # remove underscore
+                            lemma = lemma.name().replace("_", " ")
+                            syn_tokens.add(lemma)
+
+                    # remove original token from set of synonyms
+                    syn_tokens.discard(token)
+
+                    if len(syn_tokens) > 0:
+
+                        if random.random() < 0.2:
+                            # randomly select a synonym
+                            syn_token = random.choice(list(syn_tokens))
+                            tokens[i] = syn_token
 
         detokenizer = TreebankWordDetokenizer()
         return detokenizer.detokenize(tokens)
@@ -136,36 +190,47 @@ def fetch_model_and_tokenizer(model_name):
         return None, None
 
 
-def evaluate_openai(run_id, model_name, dataset, prompt, perturb, perturb_exemplar):
+def evaluate_openai(run_id, model_name, dataset, prompt, shots, perturb, perturb_exemplar, dev):
 
-    with open(f'logs/{run_id}.jsonl', 'w') as f:
+    if not dev:
+        f = open(f'logs/{run_id}.jsonl', 'w')
 
-        exemp_dict = dataset["train"][0]
+    exemp_ds = dataset["train"].select(range(shots))
 
-        # generate exemplar
-        exemplar_perturb = perturb if perturb_exemplar else None
-        exemplar = generate_exemplar(exemp_dict, prompt, exemplar_perturb)
+    # generate exemplar
+    exemplar_perturb = perturb if perturb_exemplar else None
+    exemplar = generate_exemplar(exemp_ds, prompt, exemplar_perturb)
 
+    if not dev:
         # merge train and test datasets and remove sample for exemplar
-        modified_ds = concatenate_datasets([dataset["train"].select(
-            range(1, len(dataset["train"]))), dataset["test"]])
-        # modified_ds = dataset["train"].select(range(1, 5))
+        # modified_ds = concatenate_datasets([dataset["train"].select(
+        #     range(shots, len(dataset["train"]))), dataset["test"]])
+        modified_ds = dataset["test"]
+    else:
+        modified_ds = dataset["test"].select(range(5))
 
-        model_file, model_tokenizer = fetch_model_and_tokenizer(model_name)
+    model_file, model_tokenizer = fetch_model_and_tokenizer(model_name)
 
-        for sample in tqdm(modified_ds):
+    for sample in tqdm(modified_ds):
 
-            # generate question text
-            question = perturb_question(sample, perturb)
-            # generate prompt text
-            prompt_text = generate_prompt(question, exemplar, prompt)
-            # get response
-            result = generate_response(
-                prompt_text, model_name, model_file, model_tokenizer)
+        # generate question text
+        question = perturb_question(sample, perturb)
+        # generate prompt text
+        prompt_text = generate_prompt(question, exemplar, prompt)
+        # get response
+        result = generate_response(
+            prompt_text, model_name, model_file, model_tokenizer)
 
-            record = build_record(sample, result, perturb)
+        record = build_record(sample, result, perturb)
 
+        if not dev:
             f.write(json.dumps(record) + '\n')
+        else:
+            print(prompt_text)
+            print(record)
+
+    if not dev:
+        f.close()
 
 
 # Function to interact with the model and generate a response
