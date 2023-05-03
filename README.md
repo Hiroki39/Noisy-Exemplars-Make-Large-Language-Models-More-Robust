@@ -9,7 +9,7 @@
 - `prompt`: `cot`, `0cot` or `ltm`
 - `shot`: `1`, `2`, `4` or `8`
 - `perturb`: `synonym`, `repetition`, `shortcut`, `typo`, or `None`
-- `perturb_exemplar`: `True` or `False`, indicating whether to apply the perturbation on the exemplars
+- `perturb_exemplar`: `True` or `False`, indicating whether to apply the perturbation on exemplar questions
 - `dev`: `True` or `False`, indicating whether to use 5-example mini dataset for debugging or not
 
 Before running the code, please make sure you create a `.env` file in the root directory and add the following line:
