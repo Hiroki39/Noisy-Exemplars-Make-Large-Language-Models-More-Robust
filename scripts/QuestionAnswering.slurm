@@ -3,7 +3,7 @@
 #SBATCH --ntasks-per-node 1
 #SBATCH --cpus-per-task 1
 #SBATCH --mem 10G
-#SBATCH --time 1-00:00:00
+#SBATCH --time 08:00:00
 #SBATCH --job-name QuestionAnswering
 #SBATCH --output "/gpfs/data/oermannlab/users/hz2212/DS-GA 3001-003/slurm-logs/QuestionAnswering-%J.log" 
 
@@ -19,12 +19,19 @@ export PYTHONPATH=""
 
 if [ "$4" = "None" ]
 then
-    perturb=""
+    shots=""
 else
-    perturb="--perturb $4"
+    shots="--shots $4"
 fi
 
-if [ "$5" = "True" ]
+if [ "$5" = "None" ]
+then
+    perturb=""
+else
+    perturb="--perturb $5"
+fi
+
+if [ "$6" = "True" ]
 then
     perturb_exemplar="--perturb_exemplar"
 else
@@ -33,4 +40,4 @@ fi
 
 cd "$HOME/DS-GA 3001-003"
 
-python evaluate.py --model $1 --dataset $2 --prompt $3 $perturb $perturb_exemplar
+python evaluate.py --model $1 --dataset $2 --prompt $3 $shots $perturb $perturb_exemplar
