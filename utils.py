@@ -15,7 +15,7 @@ random.seed(42)
 
 
 def generate_exemplar(exemp_dict, prompt, perturb):
-    if prompt != '0cot':
+    if prompt == 'cot':
         # Generate a response to a prompt
         exemp_question = perturb_question(exemp_dict, perturb)
         exemp_answer = exemp_dict['answer']
@@ -28,8 +28,12 @@ def generate_exemplar(exemp_dict, prompt, perturb):
 
         exemplar = "Q: " + exemp_question + "\nA: " + exemp_answer
 
-    else:
+    elif prompt == '0cot':
+
         exemplar = ""
+
+    else:
+        pass
 
     return exemplar
 
@@ -38,13 +42,16 @@ def generate_prompt(question, exemplar, prompt):
 
     instr = "End your response with 'The answer is <answer>.'"
 
-    if prompt != '0cot':
+    if prompt == 'cot':
         prompt_text = instr + "\n\n" + exemplar + \
             "\n\nQ: " + question + "\nA:"
 
-    else:
+    elif prompt == '0cot':
         prompt_text = instr + "\n\nQ: " + \
             question + "\nA: Let's think step by step: "
+
+    else:
+        pass
 
     return prompt_text
 
@@ -65,7 +72,6 @@ def perturb_question(sample, perturb):
         # insert first step before the last sentence of the question
         sents = sent_tokenize(sample['question'])
         sents.insert(len(sents) - 1, first_step)
-
         return " ".join(sents)
     elif perturb == "typo":
 
@@ -137,7 +143,6 @@ def fetch_model_and_tokenizer(model_name):
 
 
 def evaluate_openai(run_id, model_name, dataset, prompt, perturb, perturb_exemplar):
-
     with open(f'logs/{run_id}.jsonl', 'w') as f:
 
         exemp_dict = dataset["train"][0]
@@ -148,8 +153,7 @@ def evaluate_openai(run_id, model_name, dataset, prompt, perturb, perturb_exempl
 
         # merge train and test datasets and remove sample for exemplar
         modified_ds = concatenate_datasets([dataset["train"].select(
-            range(1, len(dataset["train"]))), dataset["test"]])
-        # modified_ds = dataset["train"].select(range(1, 5))
+            range(1, 5)), dataset["test"]])
 
         model_file, model_tokenizer = fetch_model_and_tokenizer(model_name)
 
@@ -164,11 +168,11 @@ def evaluate_openai(run_id, model_name, dataset, prompt, perturb, perturb_exempl
                 prompt_text, model_name, model_file, model_tokenizer)
 
             record = build_record(sample, result, perturb)
-
             f.write(json.dumps(record) + '\n')
 
-
 # Function to interact with the model and generate a response
+
+
 def generate_response(prompt, model_name, model_file, model_tokenizer):
     if model_name == 'gpt3':
         while True:
