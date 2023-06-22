@@ -1,4 +1,4 @@
-# {Noisy Exemplars Make Large Language Models More Robust: A Domain-Agnostic Behavioral Analysis
+# Noisy Exemplars Make Large Language Models More Robust: A Domain-Agnostic Behavioral Analysis
 
 ## Run Trials
 
