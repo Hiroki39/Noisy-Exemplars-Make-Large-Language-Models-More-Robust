@@ -38,8 +38,12 @@ def generate_exemplar(exemp_ds, prompt, perturb, perturb_exemplar):
 
             exemplar += "Q: " + exemp_question + "\nA: " + exemp_answer + "\n\n"
 
-    else:
+    elif prompt == '0cot':
+
         exemplar = ""
+
+    else:
+        pass
 
     return exemplar
 
@@ -53,6 +57,9 @@ def generate_prompt(question, exemplar, prompt):
 
     if prompt == '0cot':
         prompt_text += " Let's think step by step:"
+
+    else:
+        pass
 
     return prompt_text
 
@@ -74,7 +81,6 @@ def perturb_question(sample, perturb):
         # insert first step before the last sentence of the question
         sents = sent_tokenize(sample['question'])
         sents.insert(len(sents) - 1, first_step)
-
         return " ".join(sents)
 
     elif perturb == "typo":
@@ -235,8 +241,9 @@ def evaluate_openai(run_id, model_name, dataset, prompt, shots, perturb, perturb
     if not dev:
         f.close()
 
-
 # Function to interact with the model and generate a response
+
+
 def generate_response(prompt, model_name, model_file, model_tokenizer):
     if model_name == 'gpt3':
         while True:
