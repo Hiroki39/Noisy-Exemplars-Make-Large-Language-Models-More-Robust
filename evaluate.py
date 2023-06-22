@@ -36,14 +36,21 @@ if __name__ == '__main__':
     parser.add_argument('--model', type=str, required=True, default='gptturbo')
     parser.add_argument('--dataset', type=str, required=True, default='gsm8k')
     parser.add_argument('--prompt', type=str, required=True, default='cot')
-    parser.add_argument('--shots', type=int, required=False,
-                        default=1, choices=[1, 2, 4, 8])
+    parser.add_argument('--shots', type=int, required=True,
+                        choices=[1, 2, 4, 8])
     parser.add_argument('--perturb', type=str, required=False)
-    parser.add_argument('--perturb_exemplar',
-                        action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument('--perturb_exemplar', type=int,
+                        required=True, choices=[0, 1, 2, 4, 8])
     parser.add_argument(
         '--dev', action=argparse.BooleanOptionalAction, default=False)
     args = parser.parse_args()
+
+    if args.perturb_exemplar > args.shots:
+        raise ValueError(
+            'Number of perturbed exemplars cannot be greater than the number of shots')
+
+    if not args.perturb:
+        args.perturb_exemplar = 0
 
     print("Current Arguments: ", args)
 

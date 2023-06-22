@@ -1,4 +1,3 @@
-from turtle import pos
 import openai
 import re
 import json
@@ -16,14 +15,19 @@ from openai.error import APIError, APIConnectionError, RateLimitError, Timeout
 random.seed(42)
 
 
-def generate_exemplar(exemp_ds, prompt, perturb):
+def generate_exemplar(exemp_ds, prompt, perturb, perturb_exemplar):
     if prompt != '0cot':
+
+        ratio = len(exemp_ds) // perturb_exemplar if perturb_exemplar > 0 else len(exemp_ds)
 
         exemplar = ""
 
         for i in range(len(exemp_ds)):
+
+            next_perturb = perturb if i % ratio == 0 else None
+
             # Generate a response to a prompt
-            exemp_question = perturb_question(exemp_ds[i], perturb)
+            exemp_question = perturb_question(exemp_ds[i], next_perturb)
             exemp_answer = exemp_ds[i]['answer']
 
             # remove <<...>> pattern from answer with regex non greedy
@@ -198,8 +202,7 @@ def evaluate_openai(run_id, model_name, dataset, prompt, shots, perturb, perturb
     exemp_ds = dataset["train"].select(range(shots))
 
     # generate exemplar
-    exemplar_perturb = perturb if perturb_exemplar else None
-    exemplar = generate_exemplar(exemp_ds, prompt, exemplar_perturb)
+    exemplar = generate_exemplar(exemp_ds, prompt, perturb, perturb_exemplar)
 
     if not dev:
         # merge train and test datasets and remove sample for exemplar

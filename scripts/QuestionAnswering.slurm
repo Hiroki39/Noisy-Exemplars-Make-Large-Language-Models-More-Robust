@@ -17,13 +17,6 @@ source activate ds3001-003
 
 export PYTHONPATH=""
 
-if [ "$4" = "None" ]
-then
-    shots=""
-else
-    shots="--shots $4"
-fi
-
 if [ "$5" = "None" ]
 then
     perturb=""
@@ -31,13 +24,6 @@ else
     perturb="--perturb $5"
 fi
 
-if [ "$6" = "True" ]
-then
-    perturb_exemplar="--perturb_exemplar"
-else
-    perturb_exemplar="--no-perturb_exemplar"
-fi
-
 cd "$HOME/DS-GA 3001-003"
 
-python evaluate.py --model $1 --dataset $2 --prompt $3 $shots $perturb $perturb_exemplar
+python evaluate.py --model $1 --dataset $2 --prompt $3 --shots $4 $perturb --perturb_exemplar $6
