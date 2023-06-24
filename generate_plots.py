@@ -34,8 +34,8 @@ p = df2["Accuracy"]
 df3 = df2.copy()
 df4 = df2.copy()
 
-df3["Accuracy"] = p + np.sqrt(p * (1 - p) / 8791)
-df4["Accuracy"] = p - np.sqrt(p * (1 - p) / 8791)
+df3["Accuracy"] = p + 1.96 * np.sqrt(p * (1 - p) / 8791)
+df4["Accuracy"] = p - 1.96 * np.sqrt(p * (1 - p) / 8791)
 
 df2 = pd.concat([df2, df3, df4])
 
@@ -45,12 +45,16 @@ sns.set_theme(style="darkgrid")
 g = sns.catplot(
     data=df2, kind="bar",
     x="Prompt", y="Accuracy", hue="Perturbation",
-    palette="dark", alpha=.6, height=2.5, aspect=1.8,
+    palette="bright", alpha=.6, height=2.5, aspect=1.8,
     legend=False, errorbar=("pi", 100), errwidth=2,
     hue_order=['No Perturbation', 'Typo', 'Synonym', 'Repetition', 'Shortcut']
 )
+
+# turn off x labels
+g.set_xlabels("")
+
 plt.ylim(0.5, 0.8)
-plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.27), ncol=3)
+plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
 plt.savefig('images/simple_perturb.png', bbox_inches='tight')
 
@@ -80,18 +84,18 @@ p = df2["Accuracy"]
 df3 = df2.copy()
 df4 = df2.copy()
 
-df3["Accuracy"] = p + np.sqrt(p * (1 - p) / 8791)
-df4["Accuracy"] = p - np.sqrt(p * (1 - p) / 8791)
+df3["Accuracy"] = p + 1.96 * np.sqrt(p * (1 - p) / 8791)
+df4["Accuracy"] = p - 1.96 * np.sqrt(p * (1 - p) / 8791)
 
 df2 = pd.concat([df2, df3, df4])
 
 g = sns.catplot(
     data=df2, x="Prompt", y="Accuracy", col="Perturbation",
     hue="perturb_exemplar",
-    kind="bar", height=3, aspect=1, palette="dark", alpha=.6,
+    kind="bar", height=3, aspect=1, palette="crest", alpha=.6,
     col_order=['Typo', 'Synonym', 'Repetition', 'Shortcut'],
     errorbar=("pi", 100), errwidth=2,
-    legend=False,
+    legend=False
 )
 g.set_titles("{col_name}")
 plt.ylim(0.55, 0.85)
@@ -100,7 +104,7 @@ plt.ylim(0.55, 0.85)
 g.set_xlabels("")
 
 # get figure of g
-g.fig.supxlabel("Prompt")
+# g.fig.supxlabel("Prompt")
 
 df2 = df[(df["Prompt"] == "0CoT") & (df["perturb_exemplar"] == 0)]
 
@@ -111,8 +115,10 @@ axes[1].axhline(df2.iloc[2, 7], ls='--', color='red')
 axes[2].axhline(df2.iloc[0, 7], ls='--', color='red')
 axes[3].axhline(df2.iloc[1, 7], ls='--', color='red')
 
-# legend out of plot
-plt.legend(loc='upper center', bbox_to_anchor=(-1.2, -0.32),
-           ncol=5, title="Number of Perturbed Exemplars out of 8")
+# legend right side of plot
+plt.legend(loc='upper center', bbox_to_anchor=(1.4, 0.9),
+           title="# Perturbed\nExemplars")
+# plt.legend(loc='upper center', bbox_to_anchor=(-1.2, -0.32),
+#            ncol=5, title="Number of Perturbed Exemplars out of 8")
 
 plt.savefig('images/perturb_shots.png', bbox_inches='tight')
