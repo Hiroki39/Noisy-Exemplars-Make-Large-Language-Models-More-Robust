@@ -1,7 +1,6 @@
 import argparse
-import openai
 from datasets import load_dataset
-from utils import evaluate_openai
+from utils import evaluate_openai, print_model_inputs
 from uuid import uuid4
 from dotenv import load_dotenv
 import os
@@ -20,9 +19,14 @@ def conduct_test(model, dataset_name, prompt, shots, perturb, perturb_exemplar, 
             dataset_name, 'main' if prompt != 'ltm' else 'socratic', download_mode='force_redownload')
 
     # Set up the OpenAI API client
-    openai.api_key = os.getenv('OPENAI_API_KEY')
-    evaluate_openai(run_id, model, dataset, prompt, shots,
-                    perturb, perturb_exemplar, dev)
+    if model in ('gptturbo', 'gpt3'):
+        import openai
+        openai.api_key = os.getenv('OPENAI_API_KEY')
+        evaluate_openai(run_id, model, dataset, prompt, shots,
+                        perturb, perturb_exemplar, dev)
+    elif model == 'none':
+        output_filename = 'generated_prompts/{}_{}_{}shots_perturb{}_{}perturbexemplar.json'.format(dataset_name, prompt, shots, 'none' if perturb == None else perturb, perturb_exemplar)
+        print_model_inputs(run_id, model, dataset, prompt, shots, perturb, perturb_exemplar, dev, output_filename)
 
     if not dev:
         with open('log_files.csv', 'a') as f:

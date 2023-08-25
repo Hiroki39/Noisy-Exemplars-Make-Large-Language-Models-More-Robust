@@ -1,4 +1,3 @@
-import openai
 import re
 import json
 import nltk
@@ -10,7 +9,6 @@ from nltk.corpus import wordnet
 from transformers import T5ForConditionalGeneration, AutoTokenizer
 import time
 import random
-from openai.error import APIError, APIConnectionError, RateLimitError, Timeout
 
 random.seed(42)
 
@@ -241,11 +239,44 @@ def evaluate_openai(run_id, model_name, dataset, prompt, shots, perturb, perturb
     if not dev:
         f.close()
 
+
+def print_model_inputs(run_id, model_name, dataset, prompt, shots, perturb, perturb_exemplar, dev, output_filename):
+    if not dev:
+        f = open(f'logs/{run_id}.jsonl', 'w')
+
+    exemp_ds = dataset["train"].select(range(shots))
+
+    # generate exemplar
+    exemplar = generate_exemplar(exemp_ds, prompt, perturb, perturb_exemplar)
+
+    if not dev:
+        # merge train and test datasets and remove sample for exemplar
+        # modified_ds = concatenate_datasets([dataset["train"].select(
+        #     range(shots, len(dataset["train"]))), dataset["test"]])
+        modified_ds = dataset["test"]
+    else:
+        modified_ds = dataset["test"].select(range(5))
+
+    prompts = []
+    for sample in tqdm(modified_ds):
+        # generate question text
+        question = perturb_question(sample, perturb)
+        # generate prompt text
+        prompt_text = generate_prompt(question, exemplar, prompt)
+        prompts.append(prompt_text)
+
+    with open(output_filename, 'w') as fout:
+        json.dump(prompts, fout, indent='')
+
+    if not dev:
+        f.close()
+
+
 # Function to interact with the model and generate a response
-
-
 def generate_response(prompt, model_name, model_file, model_tokenizer):
     if model_name == 'gpt3':
+        import openai
+        from openai.error import APIError, APIConnectionError, RateLimitError, Timeout
         while True:
             try:
                 response = openai.Completion.create(
@@ -263,6 +294,8 @@ def generate_response(prompt, model_name, model_file, model_tokenizer):
                 continue
             break
     elif model_name == 'gptturbo':
+        import openai
+        from openai.error import APIError, APIConnectionError, RateLimitError, Timeout
         while True:
             try:
                 response = openai.ChatCompletion.create(
