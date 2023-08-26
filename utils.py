@@ -1,4 +1,3 @@
-import openai
 import re
 import json
 import nltk
@@ -9,8 +8,6 @@ from nltk.corpus import wordnet
 from transformers import LlamaForCausalLM, LlamaTokenizer
 import time
 import random
-import torch
-from openai.error import APIError, APIConnectionError, RateLimitError, Timeout
 
 random.seed(42)
 
@@ -196,6 +193,10 @@ def build_record(sample, result, perturb):
         except AttributeError:
             record["numeric_response"] = None
 
+    elif result["model"] == "none":
+        record["response"] = None
+        record["numeric_response"] = None
+
     return record
 
 
@@ -260,9 +261,56 @@ def model_evaluate(
         f.close()
 
 
+def print_model_inputs(
+    run_id,
+    model_name,
+    dataset,
+    prompt,
+    shots,
+    perturb,
+    perturb_exemplar,
+    dev,
+    output_filename,
+):
+    if not dev:
+        f = open(f"logs/{run_id}.jsonl", "w")
+
+    exemp_ds = dataset["train"].select(range(shots))
+
+    # generate exemplar
+    exemplar = generate_exemplar(exemp_ds, prompt, perturb, perturb_exemplar)
+
+    if not dev:
+        # merge train and test datasets and remove sample for exemplar
+        # modified_ds = concatenate_datasets([dataset["train"].select(
+        #     range(shots, len(dataset["train"]))), dataset["test"]])
+        modified_ds = dataset["test"]
+    else:
+        modified_ds = dataset["test"].select(range(5))
+
+    with open(output_filename, "w") as fout:
+        for sample in tqdm(modified_ds):
+            # generate question text
+            question = perturb_question(sample, perturb)
+            # generate prompt text
+            prompt_text = generate_prompt(question, exemplar, prompt)
+            # get response
+            result = generate_response(prompt_text, model_name, None, None)
+
+            record = build_record(sample, result, perturb)
+            record["prompt"] = prompt_text
+            fout.write(json.dumps(record) + "\n")
+
+    if not dev:
+        f.close()
+
+
 # Function to interact with the model and generate a response
-def generate_response(prompt, model_name, model, model_tokenizer):
+def generate_response(prompt, model_name, model_file, model_tokenizer):
     if model_name == "gpt3":
+        import openai
+        from openai.error import APIError, APIConnectionError, RateLimitError, Timeout
+
         while True:
             try:
                 response = openai.Completion.create(
@@ -280,6 +328,9 @@ def generate_response(prompt, model_name, model, model_tokenizer):
                 continue
             break
     elif model_name == "gptturbo":
+        import openai
+        from openai.error import APIError, APIConnectionError, RateLimitError, Timeout
+
         while True:
             try:
                 response = openai.ChatCompletion.create(
@@ -314,5 +365,7 @@ def generate_response(prompt, model_name, model, model_tokenizer):
             "model": "llama",
             "response": answer_text,
         }
+    elif model_name == "none":
+        response = {"model": "none"}
 
     return response
