@@ -3,43 +3,43 @@ import re
 import json
 import nltk
 from tqdm import tqdm
-from datasets import concatenate_datasets
 from nltk.tokenize import sent_tokenize, word_tokenize
 from nltk.tokenize.treebank import TreebankWordDetokenizer
 from nltk.corpus import wordnet
-from transformers import T5ForConditionalGeneration, AutoTokenizer
+from transformers import LlamaForCausalLM, LlamaTokenizer
 import time
 import random
+import torch
 from openai.error import APIError, APIConnectionError, RateLimitError, Timeout
 
 random.seed(42)
 
 
 def generate_exemplar(exemp_ds, prompt, perturb, perturb_exemplar):
-    if prompt != '0cot':
-
-        ratio = len(exemp_ds) // perturb_exemplar if perturb_exemplar > 0 else len(exemp_ds)
+    if prompt != "0cot":
+        ratio = (
+            len(exemp_ds) // perturb_exemplar if perturb_exemplar > 0 else len(exemp_ds)
+        )
 
         exemplar = ""
 
         for i in range(len(exemp_ds)):
-
             next_perturb = perturb if i % ratio == 0 else None
 
             # Generate a response to a prompt
             exemp_question = perturb_question(exemp_ds[i], next_perturb)
-            exemp_answer = exemp_ds[i]['answer']
+            exemp_answer = exemp_ds[i]["answer"]
 
             # remove <<...>> pattern from answer with regex non greedy
-            exemp_answer = re.sub(r'<<.*?>>', '', exemp_answer)
+            exemp_answer = re.sub(r"<<.*?>>", "", exemp_answer)
             exemp_answer = re.sub(
-                r"#### (\-?[0-9\.\,]+)", r"The answer is \1.", exemp_answer)
+                r"#### (\-?[0-9\.\,]+)", r"The answer is \1.", exemp_answer
+            )
             exemp_answer = " ".join(exemp_answer.split("\n"))
 
             exemplar += "Q: " + exemp_question + "\nA: " + exemp_answer + "\n\n"
 
-    elif prompt == '0cot':
-
+    elif prompt == "0cot":
         exemplar = ""
 
     else:
@@ -49,13 +49,11 @@ def generate_exemplar(exemp_ds, prompt, perturb, perturb_exemplar):
 
 
 def generate_prompt(question, exemplar, prompt):
-
     instr = "End your response with 'The answer is <answer>.'"
 
-    prompt_text = instr + "\n\n" + exemplar + \
-        "Q: " + question + "\nA:"
+    prompt_text = instr + "\n\n" + exemplar + "Q: " + question + "\nA:"
 
-    if prompt == '0cot':
+    if prompt == "0cot":
         prompt_text += " Let's think step by step:"
 
     else:
@@ -72,35 +70,37 @@ def perturb_question(sample, perturb):
         sample_answer = sample["answer"]
 
         # remove <<...>> pattern from answer with regex non greedy
-        sample_answer = re.sub(r'<<.*?>>', '', sample_answer)
+        sample_answer = re.sub(r"<<.*?>>", "", sample_answer)
         sample_answer = re.sub(
-            r"#### (\-?[0-9\.\,]+)", r"The answer is \1.", sample_answer)
+            r"#### (\-?[0-9\.\,]+)", r"The answer is \1.", sample_answer
+        )
 
         first_step = sample_answer.split("\n")[0]
 
         # insert first step before the last sentence of the question
-        sents = sent_tokenize(sample['question'])
+        sents = sent_tokenize(sample["question"])
         sents.insert(len(sents) - 1, first_step)
         return " ".join(sents)
 
     elif perturb == "typo":
-
-        tokens = word_tokenize(sample['question'])
+        tokens = word_tokenize(sample["question"])
         for i, token in enumerate(tokens):
             if len(token) > 1 and not token.isnumeric():
                 # introduce a typo with probability 0.1
                 if random.random() < 0.1:
                     typo_ind = random.randint(0, len(token) - 2)
-                    tokens[i] = token[:typo_ind] + \
-                        token[typo_ind + 1] + token[typo_ind] + \
-                        token[typo_ind + 2:]
+                    tokens[i] = (
+                        token[:typo_ind]
+                        + token[typo_ind + 1]
+                        + token[typo_ind]
+                        + token[typo_ind + 2 :]
+                    )
 
         detokenizer = TreebankWordDetokenizer()
         return detokenizer.detokenize(tokens)
 
     elif perturb == "repetition":
-
-        sents = sent_tokenize(sample['question'])
+        sents = sent_tokenize(sample["question"])
 
         if len(sents) > 1:
             # randomly select a sentence to repeat
@@ -111,15 +111,13 @@ def perturb_question(sample, perturb):
         return " ".join(sents)
 
     elif perturb == "synonym":
-
-        tokens = word_tokenize(sample['question'])
+        tokens = word_tokenize(sample["question"])
         pos_tags = nltk.pos_tag(tokens)
 
         # replace nouns and verbs with synonyms
         for i, (token, pos_tag) in enumerate(pos_tags):
-            if pos_tag.startswith('N') or pos_tag.startswith('V'):
-
-                if pos_tag.startswith('N'):
+            if pos_tag.startswith("N") or pos_tag.startswith("V"):
+                if pos_tag.startswith("N"):
                     synsets = wordnet.synsets(token, pos=wordnet.NOUN)
                 else:
                     synsets = wordnet.synsets(token, pos=wordnet.VERB)
@@ -137,7 +135,6 @@ def perturb_question(sample, perturb):
                     syn_tokens.discard(token)
 
                     if len(syn_tokens) > 0:
-
                         if random.random() < 0.2:
                             # randomly select a synonym
                             syn_token = random.choice(list(syn_tokens))
@@ -148,62 +145,85 @@ def perturb_question(sample, perturb):
 
 
 def build_record(sample, result, perturb):
-
     record = {}
-    record['question'] = sample['question']
+    record["question"] = sample["question"]
 
     if perturb is not None:
-        record['perturbed_question'] = perturb_question(sample, perturb)
+        record["perturbed_question"] = perturb_question(sample, perturb)
 
-    record['answer'] = re.sub(
-        r"#### (\-?[0-9\.\,]+)", r"The answer is \1.", re.sub(r'<<.*?>>', '', sample['answer']))
-    record['numeric_answer'] = re.search(
-        r"#### (\-?[0-9\.\,]+)", sample['answer']).group(1)
+    record["answer"] = re.sub(
+        r"#### (\-?[0-9\.\,]+)",
+        r"The answer is \1.",
+        re.sub(r"<<.*?>>", "", sample["answer"]),
+    )
+    record["numeric_answer"] = re.search(
+        r"#### (\-?[0-9\.\,]+)", sample["answer"]
+    ).group(1)
 
-    if result['model'] == 'text-davinci-003':
-        record['response'] = result['choices'][0]['text']
+    if result["model"] == "text-davinci-003":
+        record["response"] = result["choices"][0]["text"]
         try:
-            record['numeric_response'] = re.search(
-                r'The answer is (.*?)\.', result['choices'][0]['text'], re.IGNORECASE).group(1)
-        except AttributeError:
-            record['numeric_response'] = None
-        record['tokens'] = result['choices'][0]['logprobs']['tokens']
-        record['logprobs'] = result['choices'][0]['logprobs']['token_logprobs']
+            # extract numeric response from the answer
+            # regex captures both negative and positive numbers, and numbers with comma
 
-    elif result['model'].startswith('gpt-3.5-turbo'):
-        record['response'] = result['choices'][0]['message']['content']
-        try:
-            record['numeric_response'] = re.search(
-                r'The answer is (.*?)\.', result['choices'][0]['message']['content'], re.IGNORECASE).group(1)
+            record["numeric_response"] = re.search(
+                r"The answer is (-?\[0-9,\]+\.?\d*)",
+                result["choices"][0]["text"],
+                re.IGNORECASE,
+            ).group(1)
         except AttributeError:
-            record['numeric_response'] = None
+            record["numeric_response"] = None
+        record["tokens"] = result["choices"][0]["logprobs"]["tokens"]
+        record["logprobs"] = result["choices"][0]["logprobs"]["token_logprobs"]
 
-    elif result['model'] == 'ul2':
-        record['response'] = result['response']
+    elif result["model"].startswith("gpt-3.5-turbo"):
+        record["response"] = result["choices"][0]["message"]["content"]
         try:
-            record['numeric_response'] = re.search(
-                r'The answer is (.*?)\.', result['response'], re.IGNORECASE).group(1)
+            record["numeric_response"] = re.search(
+                r"The answer is (.*?)\.",
+                result["choices"][0]["message"]["content"],
+                re.IGNORECASE,
+            ).group(1)
         except AttributeError:
-            record['numeric_response'] = None
+            record["numeric_response"] = None
+
+    elif result["model"] == "llama":
+        record["response"] = result["response"]
+        try:
+            record["numeric_response"] = re.search(
+                r"The answer is (.*?)\.", result["response"], re.IGNORECASE
+            ).group(1)
+        except AttributeError:
+            record["numeric_response"] = None
 
     return record
 
 
 def fetch_model_and_tokenizer(model_name):
-    if model_name == 'ul2':
-        model_file = T5ForConditionalGeneration.from_pretrained(
-            "google/flan-ul2", device_map="auto", load_in_8bit=True)
-        model_tokenizer = AutoTokenizer.from_pretrained("google/flan-ul2")
+    if model_name == "llama":
+        # GPU acceleration
+        torch.backends.cudnn.benchmark = True
 
-        return model_file, model_tokenizer
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        model = LlamaForCausalLM.from_pretrained(
+            "/gpfs/data/oermannlab/public_data/llama2_models_hf/Llama-2-13b-chat-hf"
+        ).to(device)
+
+        model_tokenizer = LlamaTokenizer.from_pretrained(
+            "/gpfs/data/oermannlab/public_data/llama2_models_hf/Llama-2-13b-chat-hf"
+        )
+
+        return model, model_tokenizer
     else:
         return None, None
 
 
-def evaluate_openai(run_id, model_name, dataset, prompt, shots, perturb, perturb_exemplar, dev):
-
+def model_evaluate(
+    run_id, model_name, dataset, prompt, shots, perturb, perturb_exemplar, dev
+):
     if not dev:
-        f = open(f'logs/{run_id}.jsonl', 'w')
+        f = open(f"logs/{run_id}.jsonl", "w")
 
     exemp_ds = dataset["train"].select(range(shots))
 
@@ -214,26 +234,24 @@ def evaluate_openai(run_id, model_name, dataset, prompt, shots, perturb, perturb
         # merge train and test datasets and remove sample for exemplar
         # modified_ds = concatenate_datasets([dataset["train"].select(
         #     range(shots, len(dataset["train"]))), dataset["test"]])
-        modified_ds = dataset["test"]
+        modified_ds = dataset["test"].select(range(5))
     else:
         modified_ds = dataset["test"].select(range(5))
 
-    model_file, model_tokenizer = fetch_model_and_tokenizer(model_name)
+    model, model_tokenizer = fetch_model_and_tokenizer(model_name)
 
     for sample in tqdm(modified_ds):
-
         # generate question text
         question = perturb_question(sample, perturb)
         # generate prompt text
         prompt_text = generate_prompt(question, exemplar, prompt)
         # get response
-        result = generate_response(
-            prompt_text, model_name, model_file, model_tokenizer)
+        result = generate_response(prompt_text, model_name, model, model_tokenizer)
 
         record = build_record(sample, result, perturb)
 
         if not dev:
-            f.write(json.dumps(record) + '\n')
+            f.write(json.dumps(record) + "\n")
         else:
             print(prompt_text)
             print(record)
@@ -241,15 +259,14 @@ def evaluate_openai(run_id, model_name, dataset, prompt, shots, perturb, perturb
     if not dev:
         f.close()
 
+
 # Function to interact with the model and generate a response
-
-
-def generate_response(prompt, model_name, model_file, model_tokenizer):
-    if model_name == 'gpt3':
+def generate_response(prompt, model_name, model, model_tokenizer):
+    if model_name == "gpt3":
         while True:
             try:
                 response = openai.Completion.create(
-                    engine='text-davinci-003',
+                    engine="text-davinci-003",
                     prompt=prompt,
                     max_tokens=300,
                     temperature=0,
@@ -262,11 +279,11 @@ def generate_response(prompt, model_name, model_file, model_tokenizer):
                 time.sleep(1)
                 continue
             break
-    elif model_name == 'gptturbo':
+    elif model_name == "gptturbo":
         while True:
             try:
                 response = openai.ChatCompletion.create(
-                    model='gpt-3.5-turbo',
+                    model="gpt-3.5-turbo",
                     messages=[{"role": "user", "content": prompt}],
                     max_tokens=300,
                     temperature=0,
@@ -278,17 +295,24 @@ def generate_response(prompt, model_name, model_file, model_tokenizer):
                 time.sleep(1)
                 continue
             break
-    elif model_name == 'ul2':
-        inputs = model_tokenizer(
-            prompt, return_tensors="pt").input_ids.to("cuda")
-        outputs = model_file.generate(inputs, max_length=300, do_sample=True,
-                                      top_p=1, temperature=0, num_return_sequences=1)
-        answer_text = model_tokenizer.decode(
-            outputs[0], skip_special_tokens=True)
+
+    elif model_name == "llama":
+        inputs = model_tokenizer(prompt, return_tensors="pt")
+
+        outputs = model.generate(
+            inputs=inputs.input_ids.to(model.device),
+            max_new_tokens=300,
+            do_sample=True,
+            temperature=0.01,
+            top_p=1,
+            num_return_sequences=1,
+        )
+
+        answer_text = model_tokenizer.decode(outputs[0], skip_special_tokens=True)
 
         response = {
-            'model': 'ul2',
-            'response': answer_text,
+            "model": "llama",
+            "response": answer_text,
         }
 
     return response

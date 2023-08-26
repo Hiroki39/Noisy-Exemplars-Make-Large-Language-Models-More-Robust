@@ -4,8 +4,8 @@
 #SBATCH --cpus-per-task 1
 #SBATCH --mem 10G
 #SBATCH --time 08:00:00
-#SBATCH --job-name QuestionAnswering
-#SBATCH --output "/gpfs/data/oermannlab/users/hz2212/DS-GA 3001-003/slurm-logs/QuestionAnswering-%J.log" 
+#SBATCH --job-name QuestionAnsweringOpenAI
+#SBATCH --output "/gpfs/data/oermannlab/users/hz2212/DS-GA 3001-003/slurm-logs/QuestionAnsweringOpenAI-%J.log" 
 
 # load modules or conda environments here
 # e.g. farnam:

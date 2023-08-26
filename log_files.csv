@@ -101,3 +101,5 @@ e93e196a-75be-46fb-87ee-bf2a6e541934,gptturbo,gsm8k,ltm,8,typo,1
 d1edb8ce-6d71-4fd3-95d4-8259b3cc8c07,gptturbo,gsm8k,ltm,8,typo,4
 bf999634-fcf8-4513-b803-30f771a8adad,gptturbo,gsm8k,ltm,8,typo,8
 51cc8e86-b852-4e3b-8922-90d0b1461629,gptturbo,gsm8k,ltm,8,,0
+e32ad480-d8d4-477b-979b-b2e38b1e5756,llama,gsm8k,0cot,1,repetition,0
+78c6af6b-8b5d-4f9e-9c3f-3ac1ec27853e,llama,gsm8k,cot,1,typo,0
