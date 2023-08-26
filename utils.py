@@ -184,6 +184,10 @@ def build_record(sample, result, perturb):
         except AttributeError:
             record['numeric_response'] = None
 
+    elif result['model'] == 'none':
+        record['response'] = None
+        record['numeric_response'] = None
+
     return record
 
 
@@ -257,16 +261,19 @@ def print_model_inputs(run_id, model_name, dataset, prompt, shots, perturb, pert
     else:
         modified_ds = dataset["test"].select(range(5))
 
-    prompts = []
-    for sample in tqdm(modified_ds):
-        # generate question text
-        question = perturb_question(sample, perturb)
-        # generate prompt text
-        prompt_text = generate_prompt(question, exemplar, prompt)
-        prompts.append(prompt_text)
-
     with open(output_filename, 'w') as fout:
-        json.dump(prompts, fout, indent='')
+        for sample in tqdm(modified_ds):
+            # generate question text
+            question = perturb_question(sample, perturb)
+            # generate prompt text
+            prompt_text = generate_prompt(question, exemplar, prompt)
+            # get response
+            result = generate_response(
+                prompt_text, model_name, None, None)
+
+            record = build_record(sample, result, perturb)
+            record['prompt'] = prompt_text
+            fout.write(json.dumps(record) + '\n')
 
     if not dev:
         f.close()
@@ -323,5 +330,7 @@ def generate_response(prompt, model_name, model_file, model_tokenizer):
             'model': 'ul2',
             'response': answer_text,
         }
+    elif model_name == 'none':
+        response = { 'model': 'none' }
 
     return response
