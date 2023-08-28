@@ -6,13 +6,14 @@ from nltk.tokenize import sent_tokenize, word_tokenize
 from nltk.tokenize.treebank import TreebankWordDetokenizer
 from nltk.corpus import wordnet
 from transformers import LlamaForCausalLM, LlamaTokenizer
+import torch
 import time
 import random
 
 random.seed(42)
 
 
-def generate_exemplar(exemp_ds, prompt, perturb, perturb_exemplar):
+def generate_exemplar(exemp_ds, prompt, perturb, perturb_exemplar, dataset_name):
     if prompt != "0cot":
         ratio = (
             len(exemp_ds) // perturb_exemplar if perturb_exemplar > 0 else len(exemp_ds)
@@ -24,15 +25,21 @@ def generate_exemplar(exemp_ds, prompt, perturb, perturb_exemplar):
             next_perturb = perturb if i % ratio == 0 else None
 
             # Generate a response to a prompt
-            exemp_question = perturb_question(exemp_ds[i], next_perturb)
-            exemp_answer = exemp_ds[i]["answer"]
+            exemp_question = perturb_question(exemp_ds[i], next_perturb, dataset_name)
 
-            # remove <<...>> pattern from answer with regex non greedy
-            exemp_answer = re.sub(r"<<.*?>>", "", exemp_answer)
-            exemp_answer = re.sub(
-                r"#### (\-?[0-9\.\,]+)", r"The answer is \1.", exemp_answer
-            )
-            exemp_answer = " ".join(exemp_answer.split("\n"))
+            if dataset_name == "gsm8k":
+                exemp_answer = exemp_ds[i]["answer"]
+
+                # remove <<...>> pattern from answer with regex non greedy
+                exemp_answer = re.sub(r"<<.*?>>", "", exemp_answer)
+                exemp_answer = re.sub(
+                    r"#### (\-?[0-9\.\,]+)", r"The answer is \1.", exemp_answer
+                )
+                exemp_answer = " ".join(exemp_answer.split("\n"))
+            elif dataset_name == "strategyqa":
+                exemp_answer = (
+                    exemp_ds[i]["facts"] + f" The answer is {exemp_ds[i]['answer']}."
+                )
 
             exemplar += "Q: " + exemp_question + "\nA: " + exemp_answer + "\n\n"
 
@@ -59,25 +66,30 @@ def generate_prompt(question, exemplar, prompt):
     return prompt_text
 
 
-def perturb_question(sample, perturb):
+def perturb_question(sample, perturb, dataset_name):
     if perturb is None:
         return sample["question"]
 
     elif perturb == "shortcut":
-        sample_answer = sample["answer"]
+        if dataset_name == "gsm8k":
+            sample_answer = sample["answer"]
 
-        # remove <<...>> pattern from answer with regex non greedy
-        sample_answer = re.sub(r"<<.*?>>", "", sample_answer)
-        sample_answer = re.sub(
-            r"#### (\-?[0-9\.\,]+)", r"The answer is \1.", sample_answer
-        )
+            # remove <<...>> pattern from answer with regex non greedy
+            sample_answer = re.sub(r"<<.*?>>", "", sample_answer)
+            sample_answer = re.sub(
+                r"#### (\-?[0-9\.\,]+)", r"The answer is \1.", sample_answer
+            )
 
-        first_step = sample_answer.split("\n")[0]
+            first_step = sample_answer.split("\n")[0]
 
-        # insert first step before the last sentence of the question
-        sents = sent_tokenize(sample["question"])
-        sents.insert(len(sents) - 1, first_step)
-        return " ".join(sents)
+            # insert first step before the last sentence of the question
+            sents = sent_tokenize(sample["question"])
+            sents.insert(len(sents) - 1, first_step)
+            return " ".join(sents)
+
+        elif dataset_name == "strategyqa":
+            first_step = sent_tokenize(sample["facts"])[0]
+            return sample["question"] + " " + first_step
 
     elif perturb == "typo":
         tokens = word_tokenize(sample["question"])
@@ -141,61 +153,101 @@ def perturb_question(sample, perturb):
         return detokenizer.detokenize(tokens)
 
 
-def build_record(sample, result, perturb):
+def build_record(sample, result, perturb, dataset_name):
     record = {}
     record["question"] = sample["question"]
 
     if perturb is not None:
-        record["perturbed_question"] = perturb_question(sample, perturb)
+        record["perturbed_question"] = perturb_question(sample, perturb, dataset_name)
 
-    record["answer"] = re.sub(
-        r"#### (\-?[0-9\.\,]+)",
-        r"The answer is \1.",
-        re.sub(r"<<.*?>>", "", sample["answer"]),
-    )
-    record["numeric_answer"] = re.search(
-        r"#### (\-?[0-9\.\,]+)", sample["answer"]
-    ).group(1)
+    if dataset_name == "gsm8k":
+        record["answer"] = re.sub(
+            r"#### (\-?[0-9\.\,]+)",
+            r"The answer is \1.",
+            re.sub(r"<<.*?>>", "", sample["answer"]),
+        )
+        record["numeric_answer"] = re.search(
+            r"#### (\-?[0-9\.\,]+)", sample["answer"]
+        ).group(1)
+
+    elif dataset_name == "strategyqa":
+        record["answer"] = sample["facts"] + f" The answer is {sample['answer']}."
+        record["binary_answer"] = sample["answer"]
 
     if result["model"] == "text-davinci-003":
         record["response"] = result["choices"][0]["text"]
         try:
             # extract numeric response from the answer
             # regex captures both negative and positive numbers, and numbers with comma
-
-            record["numeric_response"] = re.search(
-                r"The answer is (-?\[0-9,\]+\.?\d*)",
-                result["choices"][0]["text"],
-                re.IGNORECASE,
-            ).group(1)
+            if dataset_name == "gsm8k":
+                record["numeric_response"] = re.search(
+                    r"The answer is (-?\[0-9\.\,]+)",
+                    result["choices"][0]["text"],
+                    re.IGNORECASE,
+                ).group(1)
+            elif dataset_name == "strategyqa":
+                record["binary_response"] = re.search(
+                    r"The answer is (.*?)\.",
+                    result["choices"][0]["text"],
+                    re.IGNORECASE,
+                ).group(1)
         except AttributeError:
-            record["numeric_response"] = None
+            if dataset_name == "gsm8k":
+                record["numeric_response"] = None
+            elif dataset_name == "strategyqa":
+                record["binary_response"] = None
+
         record["tokens"] = result["choices"][0]["logprobs"]["tokens"]
         record["logprobs"] = result["choices"][0]["logprobs"]["token_logprobs"]
 
     elif result["model"].startswith("gpt-3.5-turbo"):
         record["response"] = result["choices"][0]["message"]["content"]
         try:
-            record["numeric_response"] = re.search(
-                r"The answer is (.*?)\.",
-                result["choices"][0]["message"]["content"],
-                re.IGNORECASE,
-            ).group(1)
+            if dataset_name == "gsm8k":
+                record["numeric_response"] = re.search(
+                    r"The answer is (-?\[0-9\.\,]+)",
+                    result["choices"][0]["message"]["content"],
+                    re.IGNORECASE,
+                ).group(1)
+            elif dataset_name == "strategyqa":
+                record["binary_response"] = re.search(
+                    r"The answer is (.*?)\.",
+                    result["choices"][0]["message"]["content"],
+                    re.IGNORECASE,
+                ).group(1)
         except AttributeError:
-            record["numeric_response"] = None
+            if dataset_name == "gsm8k":
+                record["numeric_response"] = None
+            elif dataset_name == "strategyqa":
+                record["binary_response"] = None
 
     elif result["model"] == "llama":
         record["response"] = result["response"]
         try:
-            record["numeric_response"] = re.search(
-                r"The answer is (.*?)\.", result["response"], re.IGNORECASE
-            ).group(1)
+            if dataset_name == "gsm8k":
+                record["numeric_response"] = re.search(
+                    r"The answer is (-?\[0-9\.\,]+)",
+                    result["response"],
+                    re.IGNORECASE,
+                ).group(1)
+            elif dataset_name == "strategyqa":
+                record["binary_response"] = re.search(
+                    r"The answer is (.*?)\.",
+                    result["response"],
+                    re.IGNORECASE,
+                ).group(1)
         except AttributeError:
-            record["numeric_response"] = None
+            if dataset_name == "gsm8k":
+                record["numeric_response"] = None
+            elif dataset_name == "strategyqa":
+                record["binary_response"] = None
 
     elif result["model"] == "none":
         record["response"] = None
-        record["numeric_response"] = None
+        if dataset_name == "gsm8k":
+            record["numeric_response"] = None
+        elif dataset_name == "strategyqa":
+            record["binary_response"] = None
 
     return record
 
@@ -208,11 +260,11 @@ def fetch_model_and_tokenizer(model_name):
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         model = LlamaForCausalLM.from_pretrained(
-            "/gpfs/data/oermannlab/public_data/llama2_models_hf/Llama-2-13b-chat-hf"
+            "/gpfs/data/oermannlab/public_data/llama2_models_hf/Llama-2-13b-hf"
         ).to(device)
 
         model_tokenizer = LlamaTokenizer.from_pretrained(
-            "/gpfs/data/oermannlab/public_data/llama2_models_hf/Llama-2-13b-chat-hf"
+            "/gpfs/data/oermannlab/public_data/llama2_models_hf/Llama-2-13b-hf"
         )
 
         return model, model_tokenizer
@@ -221,7 +273,15 @@ def fetch_model_and_tokenizer(model_name):
 
 
 def model_evaluate(
-    run_id, model_name, dataset, prompt, shots, perturb, perturb_exemplar, dev
+    run_id,
+    model_name,
+    dataset,
+    dataset_name,
+    prompt,
+    shots,
+    perturb,
+    perturb_exemplar,
+    dev,
 ):
     if not dev:
         f = open(f"logs/{run_id}.jsonl", "w")
@@ -229,13 +289,15 @@ def model_evaluate(
     exemp_ds = dataset["train"].select(range(shots))
 
     # generate exemplar
-    exemplar = generate_exemplar(exemp_ds, prompt, perturb, perturb_exemplar)
+    exemplar = generate_exemplar(
+        exemp_ds, prompt, perturb, perturb_exemplar, dataset_name
+    )
 
     if not dev:
         # merge train and test datasets and remove sample for exemplar
         # modified_ds = concatenate_datasets([dataset["train"].select(
         #     range(shots, len(dataset["train"]))), dataset["test"]])
-        modified_ds = dataset["test"].select(range(5))
+        modified_ds = dataset["test"]
     else:
         modified_ds = dataset["test"].select(range(5))
 
@@ -243,13 +305,13 @@ def model_evaluate(
 
     for sample in tqdm(modified_ds):
         # generate question text
-        question = perturb_question(sample, perturb)
+        question = perturb_question(sample, perturb, dataset_name)
         # generate prompt text
         prompt_text = generate_prompt(question, exemplar, prompt)
         # get response
         result = generate_response(prompt_text, model_name, model, model_tokenizer)
 
-        record = build_record(sample, result, perturb)
+        record = build_record(sample, result, perturb, dataset_name)
 
         if not dev:
             f.write(json.dumps(record) + "\n")
@@ -265,6 +327,7 @@ def print_model_inputs(
     run_id,
     model_name,
     dataset,
+    dataset_name,
     prompt,
     shots,
     perturb,
@@ -280,6 +343,8 @@ def print_model_inputs(
     # generate exemplar
     exemplar = generate_exemplar(exemp_ds, prompt, perturb, perturb_exemplar)
 
+    model_file, model_tokenizer = fetch_model_and_tokenizer(model_name)
+
     if not dev:
         # merge train and test datasets and remove sample for exemplar
         # modified_ds = concatenate_datasets([dataset["train"].select(
@@ -291,13 +356,15 @@ def print_model_inputs(
     with open(output_filename, "w") as fout:
         for sample in tqdm(modified_ds):
             # generate question text
-            question = perturb_question(sample, perturb)
+            question = perturb_question(sample, perturb, dataset_name)
             # generate prompt text
             prompt_text = generate_prompt(question, exemplar, prompt)
             # get response
-            result = generate_response(prompt_text, model_name, None, None)
+            result = generate_response(
+                prompt_text, model_name, model_file, model_tokenizer
+            )
 
-            record = build_record(sample, result, perturb)
+            record = build_record(sample, result, perturb, dataset_name)
             record["prompt"] = prompt_text
             fout.write(json.dumps(record) + "\n")
 
@@ -350,8 +417,8 @@ def generate_response(prompt, model_name, model_file, model_tokenizer):
     elif model_name == "llama":
         inputs = model_tokenizer(prompt, return_tensors="pt")
 
-        outputs = model.generate(
-            inputs=inputs.input_ids.to(model.device),
+        outputs = model_file.generate(
+            inputs=inputs.input_ids.to(model_file.device),
             max_new_tokens=300,
             do_sample=True,
             temperature=0.01,
